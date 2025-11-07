@@ -3,7 +3,7 @@ services:
     build: .
     environment:
       - HSA_OVERRIDE_GFX_VERSION=10.3.0
-    command: ["python", "main.py", " --dataset nyc"]
+    command: ["python", "main.py", " --data" ,"nyc",]
     group_add:
       - video
     devices:
