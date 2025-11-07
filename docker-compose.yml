@@ -1,0 +1,13 @@
+services:
+  main:
+    build: .
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+    command: ["python", "main.py", " --dataset nyc"]
+    group_add:
+      - video
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    volumes:
+      - .:/app

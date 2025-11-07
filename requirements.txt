@@ -1,0 +1,5 @@
+black
+
+scikit-learn
+nni
+numpy==1.19
