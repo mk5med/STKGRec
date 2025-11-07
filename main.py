@@ -27,27 +27,34 @@ def train_network(network, file, args, criterion=None):
     data_train, train_idx = generate_input_history(
         data_neural, "train", candidate=candidate
     )
-    print("check-in data loading finish")
+    print("check-in data loading finish", flush=True)
     # generation kg data
     train_kg_dict, train_kg = kg["train_kg_dict"], kg["train_kg"]
     n_user_entity, n_loc_entity = len(data["uid_list"]), len(data["vid_list"])
     tim_dis_dict = ptp_dict
-    print("KG data loading finish")
-    print("start training ")
+    print("KG data loading finish", flush=True)
+    print("start training ", flush=True)
     max_metric = 0
     worse_round = 0
     early_stopping_round = 15
 
     file.write("\t rec@1,rec@5,rec@10,ndcg@1,ndcg@5,ndcg@10 \n")
+    file.flush()
     for epoch in range(args["epochs"]):
+        print(f"\tEpoch {epoch}")
+
         network.train(True)
         i, j = 0, 0
         total_loss, poi_loss, kg_loss = 0, 0, 0
         run_queue = generate_queue(
             train_idx, "random", "train"
         )  # list( [user_id, session_id])
-
+        count = 0
+        
         for one_train_batch in minibatch(run_queue, batch_size=args["batch_size"]):
+            count = count + 1
+            print(f"\t\t Train iter {count}", flush=True)
+
             (
                 user_id_batch,
                 session_id_batch,
@@ -64,7 +71,9 @@ def train_network(network, file, args, criterion=None):
                 n_tim_rel,
                 poi_temporal_distance_matrix,
             )
+
             max_len = max(sequences_lens_batch)
+            print(f"\t\t pad_batch_of_lists_masks {count}", flush=True)
             (
                 padded_sequence_batch,
                 tim_sequence_batch,
@@ -74,24 +83,32 @@ def train_network(network, file, args, criterion=None):
             ) = pad_batch_of_lists_masks(
                 sequence_batch, sequence_tim_batch, tim_dis_gap_batch, max_len
             )
+            print(f"\t\t variable setup {count}", flush=True)
             padded_sequence_batch = Variable(
                 torch.LongTensor(np.array(padded_sequence_batch))
             ).to(device)
+
             tim_sequence_batch = Variable(
                 torch.LongTensor(np.array(tim_sequence_batch))
             ).to(device)
+
             padded_tim_dis_gap_batch = Variable(
                 torch.LongTensor(np.array(padded_tim_dis_gap_batch))
             ).to(device)
+
             mask_batch_ix = Variable(torch.FloatTensor(np.array(mask_batch_ix))).to(
                 device
             )
+
             mask_batch_ix_non_local = Variable(
                 torch.FloatTensor(np.array(mask_batch_ix_non_local))
             ).to(device)
+
             user_id_batch = Variable(torch.LongTensor(np.array(user_id_batch))).to(
                 device
             )
+
+            print(f"\t\t network predict {count}", flush=True)
             logp_seq = network(
                 "predict",
                 user_id_batch,
@@ -117,9 +134,11 @@ def train_network(network, file, args, criterion=None):
             opt.zero_grad()
             poi_loss += loss.item()
             if (i + 1) % 80 == 0:
-                print("epoch" + str(epoch) + ": loss: " + str(loss))
+                print("epoch" + str(epoch) + ": loss: " + str(loss), flush=True)
                 logger.debug("epoch" + str(epoch) + ": loss: " + str(loss))
             i += 1
+
+        print("kg_train_batch", flush=True)
 
         for kg_train_batch in minibatch(train_kg, batch_size=args["batch_size"]):
             batch_head, batch_relation, batch_pos_tail, batch_neg_tail = (
@@ -138,9 +157,11 @@ def train_network(network, file, args, criterion=None):
             kg_loss += batch_loss.item()
             j += 1
 
-        print("epoch" + str(epoch), "total loss:", (poi_loss / i) + (kg_loss / j))
-        # if not os.path.isdir('./checkpoint'):
-        #     os.mkdir('./checkpoint')
+        print("epoch" + str(epoch), "total loss:", (poi_loss / i) + (kg_loss / j), flush=True)
+        if not os.path.isdir('./checkpoint'):
+            os.mkdir('./checkpoint')
+
+        print(f"is epoch greater than 15? if so evaluate the network and save a checkpoint file. RESULT: {epoch > 15}", flush=True)
         if epoch > 15:
             metric = evaluate(network, "vaild", 1)
             if max_metric < metric[1]:
@@ -360,18 +381,21 @@ def get_params():
 
 
 if __name__ == "__main__":
+    print("entry")
     np.random.seed(1)
     torch.manual_seed(1)
     args = get_params()
     tuner_params = nni.get_next_parameter()
+    
     logger.debug(tuner_params)
     params = vars(get_params())
     params.update(tuner_params)
     print(params)
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(params["gpu"])
+    # os.environ["CUDA_VISIBLE_DEVICES"] = str(params["gpu"])
+    print("opening data pickle", flush=True)
     path = params["data_dir"] + params["data"] + ".pkl"
     data = pickle.load(open(path, "rb"), encoding="iso-8859-1")
-
+    print("loaded data pickle", flush=True)
     vid_list = data["vid_list"]
     uid_list = data["uid_list"]
     kg = data["KG"]
@@ -386,17 +410,20 @@ if __name__ == "__main__":
         kg["max_dis_tim"][1],
         kg["timining_rel"],
     )
+    print("Deciding path", flush=True)
     if os.path.exists(params["data_dir"] + params["data"] + "_temporal_distance.pkl"):
+        print("LOADING PICKLE", flush=True)
         poi_temporal_distance_matrix = pickle.load(
             open(params["data_dir"] + params["data"] + "_temporal_distance.pkl", "rb"),
             encoding="iso-8859-1",
         )
-        print("load temporal dictance data! ")
+        print("load temporal dictance data! ", flush=True)
     else:
+        print("calculating distance", flush=True)
         poi_temporal_distance_matrix = caculate_poi_distance_time(
             params, poi_coordinate, poi_trans, tim_max, dis_max
         )
-        print("file find!")
+        print("file find!", flush=True)
     loc_size = len(vid_list)
     uid_size = len(uid_list)
     ptp_size = len(ptp_dict.keys())
@@ -408,9 +435,10 @@ if __name__ == "__main__":
     n_tim_gap = len(tim_gap)
     n_dis_gap = len(dis_gap)
     n_tim_rel = len(tim_rel)
-    print("user and loc num:", n_users, n_locs)
+    print("user and loc num:", n_users, n_locs, flush=True)
     session_id_sequences = None
     user_id_session = None
+    print("Creating network", flush=True)
     network = STKGRec(
         params,
         n_users=n_users,
@@ -420,6 +448,7 @@ if __name__ == "__main__":
         data_neural=data_neural,
         kg=kg,
     ).to(device)
+    print("Created network", flush=True)
     opt = torch.optim.Adam(
         filter(lambda p: p.requires_grad, network.parameters()),
         lr=params["lr"],
@@ -443,4 +472,5 @@ if __name__ == "__main__":
         "a",
     )
     result_path.write(str(params) + "\n")
+    print("Running train", flush=True)
     train_network(network, result_path, params, criterion=criterion)
