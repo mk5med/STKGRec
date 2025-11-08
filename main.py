@@ -28,16 +28,24 @@ def train_network(network, file, args, criterion=None):
         data_neural, "train", candidate=candidate
     )
     print("check-in data loading finish", flush=True)
+
     # generation kg data
     train_kg_dict, train_kg = kg["train_kg_dict"], kg["train_kg"]
     n_user_entity, n_loc_entity = len(data["uid_list"]), len(data["vid_list"])
     tim_dis_dict = ptp_dict
+
     print("KG data loading finish", flush=True)
     print("start training ", flush=True)
+
     max_metric = 0
     worse_round = 0
     early_stopping_round = 15
 
+    # Create a checkpoint folder
+    if not os.path.isdir("./checkpoint"):
+        os.mkdir("./checkpoint")
+
+    # The path where checkpoint files will be saved to
     checkpoint_file_path = (
         "./checkpoint/"
         + str(params["data"])
@@ -50,22 +58,29 @@ def train_network(network, file, args, criterion=None):
         + "_model.pkl"
     )
 
+    # Write the CSV header of the results file 
     file.write("\t rec@1,rec@5,rec@10,ndcg@1,ndcg@5,ndcg@10 \n")
     file.flush()
+
     for epoch in range(args["epochs"]):
         print(f"\tEpoch {epoch}")
 
         network.train(True)
-        i, j = 0, 0
+        # `i` and `j` refer to the iteration counts in the `one_train_batch` and `kg_train_batch` loops
+        # TODO: Rename these variables
+        i = 0
+        j = 0
+
         total_loss, poi_loss, kg_loss = 0, 0, 0
+
+        # `run_queue` is a list of tensors
         run_queue = generate_queue(
             train_idx, "random", "train"
         )  # list( [user_id, session_id])
-        count = 0
+
         first_tensor_batch_queue = minibatch(run_queue, batch_size=args["batch_size"])
         for one_train_batch in first_tensor_batch_queue:
-            count = i  # WARNING: REDUNDANT COUNT VARIABLE
-            print(f"\t\t [run_queue] Train iter {count}", flush=True)
+            print(f"\t\t [run_queue] Train iter {i}", flush=True)
 
             (
                 user_id_batch,
@@ -95,6 +110,7 @@ def train_network(network, file, args, criterion=None):
             ) = pad_batch_of_lists_masks(
                 sequence_batch, sequence_tim_batch, tim_dis_gap_batch, max_len
             )
+            
             print(f"\t\t\t variable setup", flush=True)
             padded_sequence_batch = Variable(
                 torch.LongTensor(np.array(padded_sequence_batch))
@@ -180,9 +196,6 @@ def train_network(network, file, args, criterion=None):
             f"epoch {str(epoch)}, total loss: {(poi_loss / i) + (kg_loss / j)}",
             flush=True,
         )
-
-        if not os.path.isdir("./checkpoint"):
-            os.mkdir("./checkpoint")
 
         torch.cuda.empty_cache()
         print(
