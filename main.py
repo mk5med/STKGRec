@@ -50,9 +50,9 @@ def train_network(network, file, args, criterion=None):
             train_idx, "random", "train"
         )  # list( [user_id, session_id])
         count = 0
-        
-        for one_train_batch in minibatch(run_queue, batch_size=args["batch_size"]):
-            count = count + 1
+        first_tensor_batch_queue = minibatch(run_queue, batch_size=args["batch_size"])
+        for one_train_batch in first_tensor_batch_queue:
+            count = i # WARNING: REDUNDANT COUNT VARIABLE
             print(f"\t\t [run_queue] Train iter {count}", flush=True)
 
             (
@@ -73,7 +73,7 @@ def train_network(network, file, args, criterion=None):
             )
 
             max_len = max(sequences_lens_batch)
-            print(f"\t\t\t pad_batch_of_lists_masks {count}", flush=True)
+            print(f"\t\t\t pad_batch_of_lists_masks", flush=True)
             (
                 padded_sequence_batch,
                 tim_sequence_batch,
@@ -83,7 +83,7 @@ def train_network(network, file, args, criterion=None):
             ) = pad_batch_of_lists_masks(
                 sequence_batch, sequence_tim_batch, tim_dis_gap_batch, max_len
             )
-            print(f"\t\t\t variable setup {count}", flush=True)
+            print(f"\t\t\t variable setup", flush=True)
             padded_sequence_batch = Variable(
                 torch.LongTensor(np.array(padded_sequence_batch))
             ).to(device)
@@ -108,7 +108,7 @@ def train_network(network, file, args, criterion=None):
                 device
             )
 
-            print(f"\t\t\t[run_queue] network predict {count}", flush=True)
+            print(f"\t\t\tnetwork predict", flush=True)
             logp_seq = network(
                 "predict",
                 user_id_batch,
@@ -126,22 +126,25 @@ def train_network(network, file, args, criterion=None):
             logp_next = torch.gather(
                 predictions_logp, dim=2, index=actual_next_tokens[:, :, None]
             )
+            
             loss = -logp_next.sum() / mask_batch_ix[:, :-1].sum()
-
             loss.backward()
+
             nn.utils.clip_grad_norm_(network.parameters(), 5.0)
             opt.step()
             opt.zero_grad()
             poi_loss += loss.item()
-            if (i + 1) % 80 == 0:
-                print(f"\t\t[run_queue] (status update) epoch {str(epoch)}: loss: {str(loss)}", flush=True)
-                logger.debug("epoch" + str(epoch) + ": loss: " + str(loss))
-            i += 1
 
+            print(f"\t\t\t [run_queue] (status update) epoch {str(epoch)}: loss: {str(loss)}", flush=True)
+
+            i += 1
+        
+        torch.cuda.empty_cache()
+        
         print("\t\t[kg_train_batch]", flush=True)
 
         for kg_train_batch in minibatch(train_kg, batch_size=args["batch_size"]):
-            print(f"\t\t\t[train_kg] kg_train_batch iter {j}")
+            print(f"\t\t\t[train_kg] kg_train_batch iter {j}", flush=True)
             batch_head, batch_relation, batch_pos_tail, batch_neg_tail = (
                 generate_kg_batch(train_kg_dict, kg_train_batch, n_loc_entity, device)
             )
@@ -162,8 +165,10 @@ def train_network(network, file, args, criterion=None):
 
         if not os.path.isdir('./checkpoint'):
             os.mkdir('./checkpoint')
-
+        
+        torch.cuda.empty_cache()
         print(f"\t\tis epoch greater than 15? if so evaluate the network and save a checkpoint file. RESULT: {epoch > 15}", flush=True)
+ 
         if epoch > 15:
             metric = evaluate(network, "vaild", 1)
             print(f"\t\t MAX_METRIC: {max_metric} NEW_METRIC: {metric[1]}", flush=True)
@@ -191,7 +196,7 @@ def train_network(network, file, args, criterion=None):
             file.write("epoch" + str(epoch) + "\t Scores:\t" + str(metric) + "\n")
             print("epoch" + str(epoch), "Scores: ", metric, flush=True)
             # nni.report_intermediate_result(metric[1])
-
+        
     # Load the model with the best test metric value.
     network.load_state_dict(
         torch.load(
