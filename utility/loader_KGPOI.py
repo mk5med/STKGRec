@@ -110,7 +110,10 @@ def caculate_poi_distance_time(args, poi_coors, trans, temp_max, distance_max):
             distance_between = int(np.float(distance_between) / 0.06)
             sim_matrix[poi_current][poi_target] = distance_between / distance_max
             sim_matrix[poi_target][poi_current] = distance_between / distance_max
-    pickle.dump(sim_matrix, open(args['data_dir'] + args['data'] +'_temporal_distance.pkl', 'wb'))
+    pickle.dump(
+        sim_matrix,
+        open(args["data_dir"] + args["data"] + "_temporal_distance.pkl", "wb"),
+    )
     return sim_matrix
 
 

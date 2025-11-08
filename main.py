@@ -38,6 +38,18 @@ def train_network(network, file, args, criterion=None):
     worse_round = 0
     early_stopping_round = 15
 
+    checkpoint_file_path = (
+        "./checkpoint/"
+        + str(params["data"])
+        + "_"
+        + str(params["batch_size"])
+        + "_"
+        + str(params["lr"])
+        + "_"
+        + str(params["hidden_size"])
+        + "_model.pkl"
+    )
+
     file.write("\t rec@1,rec@5,rec@10,ndcg@1,ndcg@5,ndcg@10 \n")
     file.flush()
     for epoch in range(args["epochs"]):
@@ -52,7 +64,7 @@ def train_network(network, file, args, criterion=None):
         count = 0
         first_tensor_batch_queue = minibatch(run_queue, batch_size=args["batch_size"])
         for one_train_batch in first_tensor_batch_queue:
-            count = i # WARNING: REDUNDANT COUNT VARIABLE
+            count = i  # WARNING: REDUNDANT COUNT VARIABLE
             print(f"\t\t [run_queue] Train iter {count}", flush=True)
 
             (
@@ -108,7 +120,7 @@ def train_network(network, file, args, criterion=None):
                 device
             )
 
-            print(f"\t\t\tnetwork predict", flush=True)
+            print(f"\t\t\t network predict", flush=True)
             logp_seq = network(
                 "predict",
                 user_id_batch,
@@ -126,7 +138,7 @@ def train_network(network, file, args, criterion=None):
             logp_next = torch.gather(
                 predictions_logp, dim=2, index=actual_next_tokens[:, :, None]
             )
-            
+
             loss = -logp_next.sum() / mask_batch_ix[:, :-1].sum()
             loss.backward()
 
@@ -135,12 +147,15 @@ def train_network(network, file, args, criterion=None):
             opt.zero_grad()
             poi_loss += loss.item()
 
-            print(f"\t\t\t [run_queue] (status update) epoch {str(epoch)}: loss: {str(loss)}", flush=True)
+            print(
+                f"\t\t\t [run_queue] (status update) epoch {str(epoch)}: loss: {str(loss)}",
+                flush=True,
+            )
 
             i += 1
-        
+
         torch.cuda.empty_cache()
-        
+
         print("\t\t[kg_train_batch]", flush=True)
 
         for kg_train_batch in minibatch(train_kg, batch_size=args["batch_size"]):
@@ -161,31 +176,34 @@ def train_network(network, file, args, criterion=None):
             kg_loss += batch_loss.item()
             j += 1
 
-        print(f"epoch {str(epoch)}, total loss: {(poi_loss / i) + (kg_loss / j)}", flush=True)
+        print(
+            f"epoch {str(epoch)}, total loss: {(poi_loss / i) + (kg_loss / j)}",
+            flush=True,
+        )
 
-        if not os.path.isdir('./checkpoint'):
-            os.mkdir('./checkpoint')
-        
+        if not os.path.isdir("./checkpoint"):
+            os.mkdir("./checkpoint")
+
         torch.cuda.empty_cache()
-        print(f"\t\tis epoch greater than 15? if so evaluate the network and save a checkpoint file. RESULT: {epoch > 15}", flush=True)
- 
+        print(
+            f"\t\tis epoch greater than 15? if so evaluate the network and save a checkpoint file. RESULT: {epoch > 15}",
+            flush=True,
+        )
+
         if epoch > 15:
             metric = evaluate(network, "vaild", 1)
             print(f"\t\t MAX_METRIC: {max_metric} NEW_METRIC: {metric[1]}", flush=True)
             if max_metric < metric[1]:
+
+                print(
+                    f"\t\tMetric improved. Saving checkpoint to {checkpoint_file_path}"
+                )
+
                 max_metric = metric[1]
                 worse_round = 0
                 torch.save(
                     network.state_dict(),
-                    "./checkpoint/"
-                    + str(params["data"])
-                    + "_"
-                    + str(params["batch_size"])
-                    + "_"
-                    + str(params["lr"])
-                    + "_"
-                    + str(params["hidden_size"])
-                    + "_model.pkl",
+                    checkpoint_file_path,
                 )
             else:
                 worse_round += 1
@@ -193,28 +211,20 @@ def train_network(network, file, args, criterion=None):
                 print("Early Stopping, best Epoch %d." % (epoch - worse_round))
                 break
 
+            print("Saving results to file", flush=True)
             file.write("epoch" + str(epoch) + "\t Scores:\t" + str(metric) + "\n")
+            file.flush()
             print("epoch" + str(epoch), "Scores: ", metric, flush=True)
             # nni.report_intermediate_result(metric[1])
-        
+
     # Load the model with the best test metric value.
-    network.load_state_dict(
-        torch.load(
-            "./checkpoint/"
-            + str(params["data"])
-            + "_"
-            + str(params["batch_size"])
-            + "_"
-            + str(params["lr"])
-            + "_"
-            + str(params["hidden_size"])
-            + "_model.pkl"
-        )
-    )
+    network.load_state_dict(torch.load(checkpoint_file_path))
+
     results = evaluate(network, "test", 1)
     print("best result", results)
+    
     # nni.report_intermediate_result(results[1])
-    file.write("best result' Scores:\t" + str(results) + "\n")
+    file.write("best result' Scores:\t" + str(results) + "\n", flush=True)
 
 
 def get_acc(target, scores):
@@ -394,7 +404,7 @@ if __name__ == "__main__":
     torch.manual_seed(1)
     args = get_params()
     tuner_params = nni.get_next_parameter()
-    
+
     logger.debug(tuner_params)
     params = vars(get_params())
     params.update(tuner_params)
